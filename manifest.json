@@ -1,0 +1,39 @@
+{
+  "name": "DaviPlata - Control de Movimientos",
+  "short_name": "DaviPlata",
+  "description": "Sistema profesional de control de movimientos financieros y generación de reportes PDF.",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#40403F",
+  "theme_color": "#D96B2B",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "https://i.ibb.co/FLFGvTNp/DAVIPLATALOGO.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://i.ibb.co/FLFGvTNp/DAVIPLATALOGO.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["finance", "productivity"],
+  "shortcuts": [
+    {
+      "name": "Nuevo Ingreso",
+      "short_name": "Ingreso",
+      "url": "index.html#ingreso",
+      "icons": [{ "src": "https://i.ibb.co/FLFGvTNp/DAVIPLATALOGO.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Exportar PDF",
+      "short_name": "Exportar",
+      "url": "index.html#pdf",
+      "icons": [{ "src": "https://i.ibb.co/FLFGvTNp/DAVIPLATALOGO.png", "sizes": "192x192" }]
+    }
+  ]
+}
