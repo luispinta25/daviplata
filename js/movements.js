@@ -139,7 +139,8 @@ async function createMovement(movement, usuarioId) {
                 monto: movement.monto,
                 motivo: movement.motivo,
                 comprobante_url: movement.comprobante_url || null,
-                fecha: movement.fecha || new Date().toISOString()
+                fecha: movement.fecha || new Date().toISOString(),
+                verified: movement.verified || 'PENDIENTE'
             }])
             .select()
             .single();
@@ -179,6 +180,9 @@ async function updateMovement(id, updates) {
         if (updates.monto !== undefined) allowedUpdates.monto = updates.monto;
         if (updates.motivo !== undefined) allowedUpdates.motivo = updates.motivo;
         if (updates.comprobante_url !== undefined) allowedUpdates.comprobante_url = updates.comprobante_url;
+        if (updates.verified !== undefined) allowedUpdates.verified = updates.verified;
+        if (updates.idmessage !== undefined) allowedUpdates.idmessage = updates.idmessage;
+        if (updates.remote_jid !== undefined) allowedUpdates.remote_jid = updates.remote_jid;
 
         const { data, error } = await client
             .from('daviplata_movimientos')
@@ -219,20 +223,10 @@ async function getStatistics() {
     }
 
     try {
-        // Intentar usar la vista
-        const { data: viewData, error: viewError } = await client
-            .from('daviplata_estadisticas')
-            .select('*')
-            .single();
-
-        if (!viewError && viewData) {
-            return viewData;
-        }
-
-        // Si la vista no existe, calcular manualmente
+        // Intentar obtener todos los movimientos filtrando por VERIFICADO para el balance
         const { data: movements, error } = await client
             .from('daviplata_movimientos')
-            .select('tipo, monto');
+            .select('tipo, monto, verified');
 
         if (error) {
             console.error('❌ Error obteniendo estadísticas:', error);
@@ -242,24 +236,39 @@ async function getStatistics() {
                 balance: 0,
                 cantidad_ingresos: 0,
                 cantidad_egresos: 0,
-                total_movimientos: 0
+                total_movimientos: 0,
+                total_pendiente: 0
             };
         }
 
         const stats = movements.reduce((acc, mov) => {
+            const monto = parseFloat(mov.monto);
+            const isVerified = mov.verified === 'VERIFICADO';
+
             if (mov.tipo === 'INGRESO') {
-                acc.total_ingresos += parseFloat(mov.monto);
-                acc.cantidad_ingresos++;
+                if (isVerified) {
+                    acc.total_ingresos += monto;
+                    acc.cantidad_ingresos++;
+                } else {
+                    acc.total_pendiente += monto;
+                }
             } else {
-                acc.total_egresos += parseFloat(mov.monto);
-                acc.cantidad_egresos++;
+                // Egresos siempre se cuentan (o según lógica de negocio)
+                // Si quieres que egresos pendientes tampoco resten, añade condición
+                if (isVerified) {
+                    acc.total_egresos += monto;
+                    acc.cantidad_egresos++;
+                } else {
+                    acc.total_pendiente -= monto; // O ignora egresos pendientes
+                }
             }
             return acc;
         }, {
             total_ingresos: 0,
             total_egresos: 0,
             cantidad_ingresos: 0,
-            cantidad_egresos: 0
+            cantidad_egresos: 0,
+            total_pendiente: 0
         });
 
         stats.balance = stats.total_ingresos - stats.total_egresos;

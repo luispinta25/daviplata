@@ -134,6 +134,25 @@ function savePDFWithName(doc, filename) {
 }
 
 /**
+ * Genera un código QR y lo devuelve como DataURL
+ */
+async function generateQRCodeDataURL(text) {
+    return new Promise((resolve) => {
+        try {
+            const qr = new QRious({
+                value: text,
+                size: 200,
+                level: 'H'
+            });
+            resolve(qr.toDataURL());
+        } catch (e) {
+            console.warn('Error generando QR:', e);
+            resolve(null);
+        }
+    });
+}
+
+/**
  * Genera un PDF de reporte consolidado de movimientos
  * @param {Array} movements - Lista de movimientos
  * @param {Object} stats - Estadísticas
@@ -147,6 +166,7 @@ async function generateMovementsReport(movements, stats, options = {}) {
         format: 'a4'
     });
 
+    const isPrintMode = options.mode === 'print';
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 15;
@@ -190,7 +210,8 @@ async function generateMovementsReport(movements, stats, options = {}) {
     // Subtítulo
     yPos += 6;
     doc.setFontSize(10);
-    doc.text('Reporte Consolidado de Movimientos', margin, yPos);
+    const subTitle = options.periodo ? `Reporte: ${options.periodo}` : 'Reporte Consolidado de Movimientos';
+    doc.text(subTitle, margin, yPos);
 
     // Línea separadora
     yPos += 6;
@@ -224,7 +245,7 @@ async function generateMovementsReport(movements, stats, options = {}) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(100, 100, 100);
-    doc.text(`${stats.cantidad_ingresos || 0} mov.`, margin + (colWidth / 2), boxYCenter + 8, { align: 'center' });
+    doc.text(`${movements.filter(m => m.tipo === 'INGRESO').length} mov.`, margin + (colWidth / 2), boxYCenter + 8, { align: 'center' });
 
     // Egresos
     doc.setFontSize(8);
@@ -236,7 +257,7 @@ async function generateMovementsReport(movements, stats, options = {}) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(100, 100, 100);
-    doc.text(`${stats.cantidad_egresos || 0} mov.`, margin + colWidth + (colWidth / 2), boxYCenter + 8, { align: 'center' });
+    doc.text(`${movements.filter(m => m.tipo === 'EGRESO').length} mov.`, margin + colWidth + (colWidth / 2), boxYCenter + 8, { align: 'center' });
 
     // Balance
     doc.setFontSize(8);
@@ -248,14 +269,14 @@ async function generateMovementsReport(movements, stats, options = {}) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(100, 100, 100);
-    doc.text(`${stats.total_movimientos || 0} total`, margin + (colWidth * 2) + (colWidth / 2), boxYCenter + 8, { align: 'center' });
+    doc.text(`${movements.length} total`, margin + (colWidth * 2) + (colWidth / 2), boxYCenter + 8, { align: 'center' });
 
     yPos += boxHeight + 10;
 
     // ============================================
     // TABLA DE MOVIMIENTOS
     // ============================================
-    const tableHeaders = ['Fecha', 'Tipo', 'Descripción', 'Monto', 'Comprobante'];
+    const tableHeaders = ['Fecha', 'Tipo', 'Descripción', 'Monto', isPrintMode ? 'QR Recibo' : 'Comprobante'];
     const colWidths = [25, 20, 65, 30, 28];
 
     // Header de tabla
@@ -276,9 +297,10 @@ async function generateMovementsReport(movements, stats, options = {}) {
 
     // Filas de datos
     let rowCount = 0;
-    const maxRowsPerPage = 30;
+    const rowHeight = isPrintMode ? 22 : 7; // Más altura para QR de 150px aprox
+    const maxRowsPerPage = isPrintMode ? 10 : 25;
 
-    movements.forEach((mov, index) => {
+    for (const [index, mov] of movements.entries()) {
         // Nueva página si es necesario
         if (rowCount >= maxRowsPerPage) {
             doc.addPage();
@@ -300,24 +322,25 @@ async function generateMovementsReport(movements, stats, options = {}) {
             yPos += 8;
         }
 
-        // Fondo alternado
+        // Fondo alternado (más notorio)
         if (index % 2 === 0) {
-            doc.setFillColor(252, 252, 252);
-            doc.rect(margin, yPos, pageWidth - (margin * 2), 6, 'F');
+            doc.setFillColor(242, 242, 242);
+            doc.rect(margin, yPos, pageWidth - (margin * 2), rowHeight, 'F');
         }
 
         xPos = margin + 2;
+        const textY = yPos + (isPrintMode ? 12 : 4.5);
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
 
         // Fecha
         doc.setTextColor(...darkColor);
-        doc.text(formatDateShort(mov.fecha), xPos, yPos + 4);
+        doc.text(formatDateShort(mov.fecha), xPos, textY);
         xPos += colWidths[0];
 
         // Tipo
         doc.setTextColor(...(mov.tipo === 'INGRESO' ? successColor : dangerColor));
-        doc.text(mov.tipo === 'INGRESO' ? 'Ingreso' : 'Egreso', xPos, yPos + 4);
+        doc.text(mov.tipo === 'INGRESO' ? 'Ingreso' : 'Egreso', xPos, textY);
         xPos += colWidths[1];
 
         // Descripción (truncar)
@@ -326,29 +349,40 @@ async function generateMovementsReport(movements, stats, options = {}) {
         if (motivo.length > 38) {
             motivo = motivo.substring(0, 35) + '...';
         }
-        doc.text(motivo, xPos, yPos + 4);
+        doc.text(motivo, xPos, textY);
         xPos += colWidths[2];
 
         // Monto
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(...(mov.tipo === 'INGRESO' ? successColor : dangerColor));
         const prefix = mov.tipo === 'INGRESO' ? '+' : '-';
-        doc.text(prefix + formatCurrencyPDF(mov.monto), xPos, yPos + 4);
+        doc.text(prefix + formatCurrencyPDF(mov.monto), xPos, textY);
         doc.setFont('helvetica', 'normal');
         xPos += colWidths[3];
 
-        // Comprobante (link)
+        // Comprobante (link o QR)
         if (mov.comprobante_url) {
-            doc.setTextColor(...primaryColor);
-            doc.textWithLink('Ver archivo', xPos, yPos + 4, { url: mov.comprobante_url });
+            if (isPrintMode) {
+                // Generar y añadir QR (aprox 150px/18mm)
+                const qrData = await generateQRCodeDataURL(mov.comprobante_url);
+                if (qrData) {
+                    doc.addImage(qrData, 'PNG', xPos, yPos + 2, 18, 18);
+                } else {
+                    doc.setFontSize(6);
+                    doc.text('No QR', xPos, textY);
+                }
+            } else {
+                doc.setTextColor(...primaryColor);
+                doc.textWithLink('Ver recibo', xPos, textY, { url: mov.comprobante_url });
+            }
         } else {
             doc.setTextColor(180, 180, 180);
-            doc.text('-', xPos, yPos + 4);
+            doc.text('-', xPos, textY);
         }
 
-        yPos += 6;
+        yPos += rowHeight;
         rowCount++;
-    });
+    }
 
     // ============================================
     // FOOTER
@@ -503,7 +537,7 @@ async function generateMovementReceipt(movement) {
         doc.text('Registrado por:', labelX, yPos);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(...darkColor);
-        doc.text(movement.daviplata_usuarios.nombre || movement.daviplata_usuarios.email || '-', valueX, yPos);
+        doc.text(formatDisplayName(movement.daviplata_usuarios.nombre || movement.daviplata_usuarios.email), valueX, yPos);
     }
 
     // ID

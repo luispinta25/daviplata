@@ -10,15 +10,15 @@
   "icons": [
     {
       "src": "https://i.ibb.co/FLFGvTNp/DAVIPLATALOGO.png",
-      "sizes": "192x192",
+      "sizes": "any",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "https://i.ibb.co/FLFGvTNp/DAVIPLATALOGO.png",
-      "sizes": "512x512",
+      "sizes": "any",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "maskable"
     }
   ],
   "categories": ["finance", "productivity"],
@@ -27,13 +27,13 @@
       "name": "Nuevo Ingreso",
       "short_name": "Ingreso",
       "url": "index.html#ingreso",
-      "icons": [{ "src": "https://i.ibb.co/FLFGvTNp/DAVIPLATALOGO.png", "sizes": "192x192" }]
+      "icons": [{ "src": "https://i.ibb.co/FLFGvTNp/DAVIPLATALOGO.png", "sizes": "any" }]
     },
     {
       "name": "Exportar PDF",
       "short_name": "Exportar",
       "url": "index.html#pdf",
-      "icons": [{ "src": "https://i.ibb.co/FLFGvTNp/DAVIPLATALOGO.png", "sizes": "192x192" }]
+      "icons": [{ "src": "https://i.ibb.co/FLFGvTNp/DAVIPLATALOGO.png", "sizes": "any" }]
     }
   ]
 }

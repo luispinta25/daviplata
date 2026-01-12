@@ -182,35 +182,156 @@ async function uploadToWebhook(file, filename) {
 
 /**
  * Notifica un movimiento creado al webhook
- * Usa mode: 'no-cors' para evitar errores de CORS
+ * Usa FormData para enviar los datos como "piezas" individuales (multipart/form-data)
+ * Esto es más compatible con herramientas como n8n y evita problemas de CORS en modo simple
  * @param {Object} movement - Datos del movimiento
  */
 async function notifyMovementWebhook(movement) {
     try {
-        const payload = {
-            tipo: movement.tipo,
-            monto: movement.monto,
-            motivo: movement.motivo,
-            url: movement.comprobante_url || null
-        };
+        // Obtener estadísticas actualizadas para enviar el saldo real después del movimiento
+        // getStatistics() está definido en movements.js y es accesible globalmente
+        let balanceAfter = 0;
+        try {
+            const stats = await getStatistics();
+            balanceAfter = stats.balance;
+        } catch (e) {
+            console.warn('No se pudo obtener el saldo actualizado para el webhook');
+        }
 
-        console.log('Notificando movimiento al webhook:', payload);
+        // Crear FormData para enviar como piezas individuales
+        const formData = new FormData();
+        formData.append('id', movement.id || '');
+        formData.append('tipo', movement.tipo || '');
+        formData.append('monto', movement.monto || 0);
+        formData.append('saldo_despues', balanceAfter); // Nuevo campo solicitado
+        formData.append('motivo', movement.motivo || '');
+        formData.append('url', movement.comprobante_url || '');
+        formData.append('fecha', movement.fecha || new Date().toISOString());
+        
+        // Incluir info del usuario (usando AppState o el objeto movement)
+        const usuarioNombre = movement.daviplata_usuarios?.nombre || AppState.userProfile?.nombre || '';
+        const usuarioEmail = movement.daviplata_usuarios?.email || AppState.userProfile?.email || '';
+        
+        formData.append('usuario_nombre', usuarioNombre);
+        formData.append('usuario_email', usuarioEmail);
+        
+        // JID previo si existe (útil para edición/notificaciones manuales)
+        if (movement.remote_jid) {
+            formData.append('remote_jid', movement.remote_jid);
+        }
 
-        // Usar mode: 'no-cors' para evitar errores de CORS
-        // El servidor recibirá el request aunque no podamos leer la respuesta
-        await fetch(CONFIG.WEBHOOK_MOVEMENT, {
+        // Usar mode: 'cors' para n8n si es necesario leer la respuesta
+        // Cambiar a mode: 'cors' si el webhook soporta OPTIONS
+        const response = await fetch(CONFIG.WEBHOOK_MOVEMENT, {
             method: 'POST',
-            mode: 'no-cors',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
+            body: formData
         });
 
-        console.log('Webhook notificado');
+        // Intentar parsear respuesta si es exitosa
+        if (response.ok) {
+            const result = await response.json();
+            console.log('Respuesta del webhook:', result);
+
+            // Si recibimos un ID de mensaje o remoteJid, actualizar el movimiento en Supabase
+            if (result.id || result.remoteJid) {
+                await updateMovement(movement.id, { 
+                    idmessage: result.id || null,
+                    remote_jid: result.remoteJid || null
+                });
+                console.log('Datos del webhook guardados:', { id: result.id, jid: result.remoteJid });
+            }
+        }
+
+        console.log('Webhook notificado exitosamente');
     } catch (error) {
         console.warn('Error notificando webhook:', error.message);
-        // No lanzar error, la notificación es secundaria
+    }
+}
+
+/**
+ * Notifica la verificación de un movimiento al segundo webhook
+ * Específicamente solicitado para cuando el admin verifica manualmente
+ * @param {Object} movement - Datos del movimiento
+ */
+async function notifyVerificationWebhook(movement) {
+    try {
+        if (!movement.idmessage || !movement.remote_jid) {
+            console.warn('Movimiento sin idmessage o remote_jid, no se puede notificar verificación');
+            return;
+        }
+
+        // Formatear número de destinatario
+        // Ejemplo: 593962248046@s.whatsapp.net -> +593962248046
+        const jid = movement.remote_jid;
+        const phone = jid.split('@')[0];
+        const formattedPhone = `+${phone}`;
+
+        const formData = new FormData();
+        formData.append('idmessage', movement.idmessage);
+        formData.append('numero_destinatario', formattedPhone);
+        
+        // Datos adicionales que podrían ser útiles
+        formData.append('id_movimiento', movement.id);
+        formData.append('monto', movement.monto);
+        formData.append('tipo', movement.tipo);
+
+        console.log('Enviando webhook de verificación:', {
+            idmessage: movement.idmessage,
+            numero_destinatario: formattedPhone
+        });
+
+        const response = await fetch(CONFIG.WEBHOOK_VERIFY, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (response.ok) {
+            console.log('Webhook de verificación enviado con éxito');
+        } else {
+            console.warn('Fallo al enviar webhook de verificación:', response.statusText);
+        }
+    } catch (error) {
+        console.error('Error enviando webhook de verificación:', error);
+    }
+}
+
+/**
+ * Notifica la "eliminación" de un mensaje anterior al editar un movimiento
+ * para que el webhook pueda borrar el mensaje de WhatsApp previo.
+ * @param {Object} movement - Datos del movimiento (antes de ser actualizado)
+ */
+async function notifyDeletionWebhook(movement) {
+    try {
+        if (!movement.idmessage || !movement.remote_jid) {
+            console.warn('Movimiento sin idmessage o remote_jid, no se puede notificar eliminación');
+            return;
+        }
+
+        // Para el webhook de ELIMINACIÓN, enviamos el remote_jid tal cual (con @s.whatsapp.net)
+        const jid = movement.remote_jid;
+
+        const formData = new FormData();
+        formData.append('idmessage', movement.idmessage);
+        formData.append('numero_destinatario', jid); // Enviamos el JID completo según requerimiento
+        formData.append('id_movimiento', movement.id);
+        formData.append('monto', movement.monto);
+        formData.append('tipo', movement.tipo);
+
+        console.log('Enviando webhook de eliminación (con JID completo):', {
+            idmessage: movement.idmessage,
+            remote_jid: jid
+        });
+
+        const response = await fetch(CONFIG.WEBHOOK_DELETE, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (response.ok) {
+            console.log('Webhook de eliminación enviado con éxito');
+        }
+    } catch (error) {
+        console.error('Error enviando webhook de eliminación:', error);
     }
 }
 

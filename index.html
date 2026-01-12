@@ -33,6 +33,9 @@
   <!-- jsPDF -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
+  <!-- QR Code Generator -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+
   <!-- Styles -->
   <link rel="stylesheet" href="css/styles.css">
 </head>
@@ -121,6 +124,14 @@
           <span>Balance Disponible</span>
         </div>
         <div class="balance-amount" id="balance-amount">$ 0</div>
+        
+        <!-- Saldo por verificar (oculto por defecto) -->
+        <div id="pending-balance-container" class="pending-balance-container" style="display: none;">
+          <i class="fas fa-clock"></i>
+          <span>Por verificar: </span>
+          <span id="pending-balance-amount">$ 0</span>
+        </div>
+
         <div class="balance-stats">
           <div class="stat-item income">
             <div class="stat-icon">
@@ -250,7 +261,7 @@
               <div class="upload-option-item" id="opt-gallery">
                 <i class="fas fa-images"></i>
                 <span>Galería</span>
-                <input type="file" id="file-gallery" accept="image/*,application/pdf">
+                <input type="file" id="file-gallery" accept="image/*">
               </div>
             </div>
             <div id="file-preview-container"></div>
@@ -275,6 +286,121 @@
   <div class="modal-overlay" id="detail-modal-overlay">
     <div class="modal" id="detail-modal-content">
       <!-- Contenido se carga dinámicamente -->
+    </div>
+  </div>
+
+  <!-- ============================================
+       MODAL: Confirmación Personalizada
+       ============================================ -->
+  <div class="modal-overlay" id="confirm-modal-overlay">
+    <div class="modal confirm-modal">
+      <div class="modal-body confirm-modal-body">
+        <div class="confirm-icon">
+          <i class="fas fa-question-circle"></i>
+        </div>
+        <h3 id="confirm-title">¿Estás seguro?</h3>
+        <p id="confirm-message">Esta acción actualizará el saldo y enviará una notificación.</p>
+        <div class="confirm-actions">
+          <button class="btn btn-secondary" id="confirm-cancel">
+            <i class="fas fa-times"></i> Cancelar
+          </button>
+          <button class="btn btn-primary" id="confirm-ok">
+            <i class="fas fa-check"></i> Sí, continuar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================
+       MODAL: Opciones de Reporte PDF
+       ============================================ -->
+  <div class="modal-overlay" id="pdf-modal-overlay">
+    <div class="modal pdf-modal">
+      <div class="modal-header">
+        <h2 class="modal-title">
+          <i class="fas fa-file-pdf"></i> Exportar Reporte
+        </h2>
+        <button class="modal-close" onclick="closePdfModal()">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <!-- Filtros Rápidos -->
+        <div class="form-group">
+          <label class="form-label">
+            <i class="fas fa-filter"></i> Tipo de Movimientos
+          </label>
+          <div class="pdf-filter-grid">
+            <label class="filter-chip">
+              <input type="radio" name="pdf-type" value="TODOS" checked>
+              <span><i class="fas fa-list"></i> Todos</span>
+            </label>
+            <label class="filter-chip">
+              <input type="radio" name="pdf-type" value="INGRESO">
+              <span><i class="fas fa-arrow-down"></i> Ingresos</span>
+            </label>
+            <label class="filter-chip">
+              <input type="radio" name="pdf-type" value="EGRESO">
+              <span><i class="fas fa-arrow-up"></i> Egresos</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Rango de Fechas -->
+        <div class="form-group">
+          <label class="form-label">
+            <i class="fas fa-calendar-alt"></i> Rango de Fechas
+          </label>
+          <div class="date-range-grid">
+            <div class="date-input-group">
+              <span class="date-label">Desde</span>
+              <input type="date" class="form-input" id="pdf-date-start">
+            </div>
+            <div class="date-input-group">
+              <span class="date-label">Hasta</span>
+              <input type="date" class="form-input" id="pdf-date-end">
+            </div>
+          </div>
+        </div>
+
+        <!-- Modo de Salida -->
+        <div class="form-group">
+          <label class="form-label">
+            <i class="fas fa-print"></i> Modo de Reporte
+          </label>
+          <div class="pdf-output-grid">
+            <label class="output-option">
+              <input type="radio" name="pdf-mode" value="device" checked>
+              <div class="output-content">
+                <i class="fas fa-mobile-alt"></i>
+                <div class="output-text">
+                  <div class="output-title">Dispositivo</div>
+                  <div class="output-desc">Incluye enlaces clicables</div>
+                </div>
+              </div>
+            </label>
+            <label class="output-option">
+              <input type="radio" name="pdf-mode" value="print">
+              <div class="output-content">
+                <i class="fas fa-print"></i>
+                <div class="output-text">
+                  <div class="output-title">Impresora</div>
+                  <div class="output-desc">Incluye códigos QR</div>
+                </div>
+              </div>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closePdfModal()">
+          <i class="fas fa-times"></i> Cerrar
+        </button>
+        <button type="button" class="btn btn-primary btn-block" id="btn-generate-pdf">
+          <i class="fas fa-file-pdf"></i> Generar Reporte
+        </button>
+      </div>
     </div>
   </div>
 

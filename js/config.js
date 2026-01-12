@@ -11,7 +11,9 @@ const CONFIG = {
     STORAGE_BUCKET: 'luispintapersonal',
 
     // Webhooks (solo para notificaciones)
-    WEBHOOK_MOVEMENT: 'https://lpn8n.luispinta.com/webhook-test/daviplataevo',
+    WEBHOOK_MOVEMENT: 'https://lpwebhook.luispinta.com/webhook/daviplataevo',
+    WEBHOOK_VERIFY: 'https://lpwebhook.luispinta.com/webhook/daviplataverificacion',
+    WEBHOOK_DELETE: 'https://lpwebhook.luispinta.com/webhook/daviplataeliminacion',
 
     // Image Compression Settings
     IMAGE_MAX_WIDTH: 1200,
@@ -30,4 +32,17 @@ const CONFIG = {
 // Export for use in other modules
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = CONFIG;
+}
+
+/**
+ * Formatea un nombre completo a "PRIMER_NOMBRE P." en MAYÚSCULAS
+ * Ejemplo: Pedro Sanches -> PEDRO S.
+ * @param {string} fullName - Nombre completo 
+ * @returns {string} - Nombre formateado
+ */
+function formatDisplayName(fullName) {
+    if (!fullName) return '';
+    const parts = fullName.trim().toUpperCase().split(/\s+/);
+    if (parts.length < 2) return parts[0];
+    return `${parts[0]} ${parts[1].charAt(0)}.`;
 }

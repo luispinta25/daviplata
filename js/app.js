@@ -11,6 +11,7 @@ const AppState = {
     selectedFile: null,
     selectedMovement: null,
     isLoading: false,
+    hasWelcomed: false, // Evitar mensajes duplicados
     // Auth state
     session: null,
     user: null,
@@ -77,6 +78,18 @@ async function handleAuthSuccess(session) {
 
     // Actualizar UI según rol
     updateUIForRole();
+
+    // Mensaje de bienvenida elegante
+    if (!AppState.hasWelcomed && AppState.userProfile) {
+        const nombreDisplay = formatDisplayName(AppState.userProfile.nombre || AppState.userProfile.email.split('@')[0]);
+        
+        // Toast elegante
+        setTimeout(() => {
+            showToast(`¡Bienvenido de nuevo, ${nombreDisplay}!`, 'success');
+        }, 800);
+        
+        AppState.hasWelcomed = true;
+    }
 }
 
 /**
@@ -99,13 +112,14 @@ function updateUIForRole() {
     // Actualizar nombre en header
     const userNameEl = document.getElementById('user-name');
     if (userNameEl && AppState.userProfile) {
-        userNameEl.textContent = AppState.userProfile.nombre || AppState.userProfile.email.split('@')[0];
+        userNameEl.textContent = 'Hola,';
     }
 
-    // Mostrar badge de rol
+    // Mostrar badge con el nombre formateado (antes mostraba ADMIN/USUARIO)
     const roleBadge = document.getElementById('role-badge');
-    if (roleBadge) {
-        roleBadge.textContent = AppState.isAdmin ? 'Admin' : 'Usuario';
+    if (roleBadge && AppState.userProfile) {
+        const nombreDisplay = formatDisplayName(AppState.userProfile.nombre || AppState.userProfile.email.split('@')[0]);
+        roleBadge.textContent = nombreDisplay;
         roleBadge.className = `role-badge ${AppState.isAdmin ? 'admin' : 'user'}`;
     }
 }
@@ -157,6 +171,54 @@ async function loadDashboard() {
     }
 }
 
+/**
+ * Muestra un diálogo de confirmación personalizado
+ * @param {string} title - Título del modal
+ * @param {string} message - Mensaje del modal
+ * @param {string} icon - Icono FontAwesome (opcional)
+ * @returns {Promise<boolean>}
+ */
+function showConfirm(title, message, icon = 'fa-question-circle') {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('confirm-modal-overlay');
+        const titleEl = document.getElementById('confirm-title');
+        const messageEl = document.getElementById('confirm-message');
+        const iconEl = modal?.querySelector('.confirm-icon i');
+        const btnOk = document.getElementById('confirm-ok');
+        const btnCancel = document.getElementById('confirm-cancel');
+
+        if (!modal || !btnOk || !btnCancel) {
+            resolve(confirm(message));
+            return;
+        }
+
+        titleEl.textContent = title;
+        messageEl.textContent = message;
+        if (iconEl) iconEl.className = `fas ${icon}`;
+
+        modal.classList.add('active');
+
+        const onOk = () => {
+            cleanup();
+            resolve(true);
+        };
+
+        const onCancel = () => {
+            cleanup();
+            resolve(false);
+        };
+
+        const cleanup = () => {
+            modal.classList.remove('active');
+            btnOk.removeEventListener('click', onOk);
+            btnCancel.removeEventListener('click', onCancel);
+        };
+
+        btnOk.addEventListener('click', onOk);
+        btnCancel.addEventListener('click', onCancel);
+    });
+}
+
 // ============================================
 // RENDERIZADO
 // ============================================
@@ -165,6 +227,8 @@ function renderBalance(stats) {
     const balanceAmount = document.getElementById('balance-amount');
     const incomeStat = document.getElementById('income-stat');
     const expenseStat = document.getElementById('expense-stat');
+    const pendingContainer = document.getElementById('pending-balance-container');
+    const pendingAmount = document.getElementById('pending-balance-amount');
 
     if (balanceAmount) {
         balanceAmount.textContent = formatCurrency(stats.balance);
@@ -178,6 +242,16 @@ function renderBalance(stats) {
 
     if (expenseStat) {
         expenseStat.textContent = formatCurrency(stats.total_egresos);
+    }
+
+    // Manejar saldo pendiente
+    if (pendingContainer && pendingAmount) {
+        if (stats.total_pendiente > 0) {
+            pendingAmount.textContent = formatCurrency(stats.total_pendiente);
+            pendingContainer.style.display = 'flex';
+        } else {
+            pendingContainer.style.display = 'none';
+        }
     }
 }
 
@@ -207,17 +281,21 @@ function renderMovements(movements) {
     container.innerHTML = filtered.map(mov => {
         const editCheck = canEditMovement(mov, AppState.movements);
         const canEdit = editCheck.canEdit;
+        const isPending = mov.verified === 'PENDIENTE';
 
         return `
-      <div class="movement-card ${canEdit ? 'editable' : ''}" data-id="${mov.id}" onclick="showMovementDetail('${mov.id}')">
+      <div class="movement-card ${canEdit ? 'editable' : ''} ${isPending ? 'pending' : ''}" data-id="${mov.id}" onclick="showMovementDetail('${mov.id}')">
         <div class="movement-icon ${mov.tipo === 'INGRESO' ? 'income' : 'expense'}">
           <i class="fas fa-${mov.tipo === 'INGRESO' ? 'arrow-down' : 'arrow-up'}"></i>
         </div>
         <div class="movement-info">
-          <div class="movement-motivo">${escapeHtml(mov.motivo)}</div>
+          <div class="movement-motivo">
+            ${escapeHtml(mov.motivo)}
+            ${isPending ? '<span class="pending-badge"><i class="fas fa-clock"></i> Pendiente</span>' : ''}
+          </div>
           <div class="movement-date">
             ${formatDate(mov.fecha, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-            ${mov.daviplata_usuarios ? ` · ${mov.daviplata_usuarios.nombre || mov.daviplata_usuarios.email.split('@')[0]}` : ''}
+            ${mov.daviplata_usuarios ? ` · ${formatDisplayName(mov.daviplata_usuarios.nombre || mov.daviplata_usuarios.email.split('@')[0])}` : ''}
           </div>
         </div>
         <div class="movement-amount ${mov.tipo === 'INGRESO' ? 'income' : 'expense'}">
@@ -337,7 +415,12 @@ function setupEventListeners() {
     // Botón generar PDF
     const pdfBtn = document.getElementById('btn-pdf');
     if (pdfBtn) {
-        pdfBtn.addEventListener('click', handleGeneratePDF);
+        pdfBtn.addEventListener('click', openPdfModal);
+    }
+
+    const btnGeneratePdf = document.getElementById('btn-generate-pdf');
+    if (btnGeneratePdf) {
+        btnGeneratePdf.addEventListener('click', handleGeneratePDF);
     }
 
     // Modal de detalle
@@ -446,6 +529,27 @@ function openEditMovementModal(movement) {
     AppState.editingMovementId = movement.id;
     AppState.selectedFile = null;
 
+    // Mostrar preview si ya tiene imagen
+    const previewContainer = document.getElementById('file-preview-container');
+    if (previewContainer) {
+        if (movement.comprobante_url) {
+            if (movement.comprobante_url.toLowerCase().endsWith('.pdf')) {
+                previewContainer.innerHTML = `
+                    <div class="file-name-badge">
+                        <i class="fas fa-file-pdf"></i>
+                        <span>Documento PDF existente</span>
+                    </div>
+                `;
+            } else {
+                previewContainer.innerHTML = `
+                    <img src="${movement.comprobante_url}" class="upload-preview-img" alt="Preview" onclick="window.open('${movement.comprobante_url}', '_blank')">
+                `;
+            }
+        } else {
+            previewContainer.innerHTML = '';
+        }
+    }
+
     // Título
     if (modalTitle) {
         modalTitle.innerHTML = '<i class="fas fa-edit"></i> Editar Movimiento';
@@ -474,6 +578,13 @@ async function handleFileSelect(event) {
     const file = event.target.files[0];
     if (!file) return;
 
+    // Solo permitir imágenes
+    if (!file.type.startsWith('image/')) {
+        showToast('Solo se permiten imágenes (JPG, PNG)', 'warning');
+        event.target.value = '';
+        return;
+    }
+
     AppState.selectedFile = file;
 
     // Limpiar estado de otros botones de upload
@@ -487,15 +598,12 @@ async function handleFileSelect(event) {
 
     // Mostrar preview
     const previewContainer = document.getElementById('file-preview-container');
+    if (!previewContainer) return;
 
     if (file.type.startsWith('image/')) {
         const dataUrl = await readFileAsDataURL(file);
         if (previewContainer) {
-            previewContainer.innerHTML = `<img src="${dataUrl}" class="file-preview" alt="Preview">`;
-        }
-    } else {
-        if (previewContainer) {
-            previewContainer.innerHTML = `<div class="file-name"><i class="fas fa-file"></i> ${file.name}</div>`;
+            previewContainer.innerHTML = `<img src="${dataUrl}" class="upload-preview-img" alt="Preview" onclick="window.open('${dataUrl}', '_blank')">`;
         }
     }
 }
@@ -563,15 +671,35 @@ async function handleFormSubmit(event) {
             comprobanteUrl = await uploadToWebhook(AppState.selectedFile, AppState.selectedFile.name);
         }
 
+        // Definir estado de verificación
+        // Si lo edita/crea un ADMIN se autoverifica. Si es un USUARIO normal, siempre pasa a PENDIENTE.
+        const verified = AppState.isAdmin ? 'VERIFICADO' : 'PENDIENTE';
+
         if (isEditing) {
-            // Actualizar movimiento existente
-            const updates = { monto, motivo };
+            // ============================================
+            // FLUJO DE EDICIÓN (ORDEN CRÍTICO)
+            // ============================================
+            
+            // 1. Obtener datos actuales antes de actualizar
+            const oldMovement = await getMovementById(AppState.editingMovementId);
+            
+            // 2. Webhook de eliminación PRIMERO (si tiene idmessage)
+            if (oldMovement && oldMovement.idmessage) {
+                await notifyDeletionWebhook(oldMovement);
+            }
+
+            // 3. Actualizar en Base de Datos con los nuevos valores
+            const updates = { monto, motivo, verified };
             if (comprobanteUrl) updates.comprobante_url = comprobanteUrl;
 
-            const updated = await updateMovement(AppState.editingMovementId, updates);
+            const updatedData = await updateMovement(AppState.editingMovementId, updates);
 
-            if (updated) {
-                showToast('Movimiento actualizado', 'success');
+            if (updatedData) {
+                // 4. Webhook de Notificación con los datos nuevos
+                // (Este webhook registra internamente el nuevo idmessage retornado por n8n)
+                await notifyMovementWebhook(updatedData);
+
+                showToast('Movimiento actualizado y re-notificado', 'success');
                 closeModal();
                 await loadDashboard();
             }
@@ -582,11 +710,12 @@ async function handleFormSubmit(event) {
                 tipo,
                 monto,
                 motivo,
-                comprobante_url: comprobanteUrl
+                comprobante_url: comprobanteUrl,
+                verified
             }, AppState.userProfile.id);
 
             if (movement) {
-                showToast(`${tipo === 'INGRESO' ? 'Ingreso' : 'Egreso'} registrado`, 'success');
+                showToast(verified === 'PENDIENTE' ? 'Registrado (Pendiente de verificación)' : 'Movimiento registrado', 'success');
                 closeModal();
                 await loadDashboard();
             }
@@ -615,6 +744,7 @@ async function showMovementDetail(id) {
     if (!modal || !content) return;
 
     const isIngreso = movement.tipo === 'INGRESO';
+    const isPending = movement.verified === 'PENDIENTE';
     const editCheck = canEditMovement(movement, AppState.movements);
 
     content.innerHTML = `
@@ -628,11 +758,14 @@ async function showMovementDetail(id) {
     </div>
     <div class="modal-body">
       <div class="detail-header">
-        <span class="detail-type ${isIngreso ? 'income' : 'expense'}">
-          <i class="fas fa-${isIngreso ? 'arrow-down' : 'arrow-up'}"></i>
-          ${movement.tipo}
-        </span>
-        <div class="detail-amount ${isIngreso ? 'income' : 'expense'}">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+          <span class="detail-type ${isIngreso ? 'income' : 'expense'}">
+            <i class="fas fa-${isIngreso ? 'arrow-down' : 'arrow-up'}"></i>
+            ${movement.tipo}
+          </span>
+          ${isPending ? '<span class="pending-badge" style="margin:0"><i class="fas fa-clock"></i> PENDIENTE DE VERIFICACIÓN</span>' : ''}
+        </div>
+        <div class="detail-amount ${isIngreso ? 'income' : 'expense'} ${isPending ? 'pending' : ''}" style="${isPending ? 'color: #9CA3AF !important' : ''}">
           ${isIngreso ? '+' : '-'}${formatCurrency(movement.monto)}
         </div>
       </div>
@@ -650,24 +783,42 @@ async function showMovementDetail(id) {
       ${movement.daviplata_usuarios ? `
         <div class="detail-section">
           <div class="detail-label">Registrado por</div>
-          <div class="detail-value">${movement.daviplata_usuarios.nombre || movement.daviplata_usuarios.email}</div>
+          <div class="detail-value">${formatDisplayName(movement.daviplata_usuarios.nombre || movement.daviplata_usuarios.email)}</div>
         </div>
       ` : ''}
       
       ${movement.comprobante_url ? `
         <div class="detail-section">
           <div class="detail-label">Comprobante</div>
-          <img src="${movement.comprobante_url}" class="detail-image" alt="Comprobante" onclick="window.open('${movement.comprobante_url}', '_blank')">
+          <div class="detail-image-container">
+            ${movement.comprobante_url.toLowerCase().endsWith('.pdf') ? `
+              <div class="detail-image-square pdf-preview" onclick="window.open('${movement.comprobante_url}', '_blank')">
+                <i class="fas fa-file-pdf"></i>
+                <span>Abrir documento</span>
+              </div>
+            ` : `
+              <div class="detail-image-square" onclick="window.open('${movement.comprobante_url}', '_blank')">
+                <div class="loader" id="detail-img-loader"></div>
+                <img src="${movement.comprobante_url}" alt="Comprobante" 
+                     onload="document.getElementById('detail-img-loader').style.display='none'">
+              </div>
+            `}
+          </div>
         </div>
       ` : ''}
       
       <div class="detail-actions">
-        <button class="btn btn-secondary btn-block" onclick="handleDownloadReceipt()">
-          <i class="fas fa-file-pdf"></i> Descargar PDF
+        ${AppState.isAdmin && isPending ? `
+          <button class="btn btn-success circle-btn" onclick="handleVerifyMovement('${movement.id}')" title="Verificar Movimiento">
+            <i class="fas fa-check"></i>
+          </button>
+        ` : ''}
+        <button class="btn btn-secondary circle-btn" onclick="handleDownloadReceipt()" title="Descargar PDF">
+          <i class="fas fa-file-pdf"></i>
         </button>
         ${editCheck.canEdit ? `
-          <button class="btn btn-primary" onclick="handleEditMovement('${movement.id}')">
-            <i class="fas fa-pen"></i> Editar
+          <button class="btn btn-primary circle-btn" onclick="handleEditMovement('${movement.id}')" title="Editar">
+            <i class="fas fa-pen"></i>
           </button>
         ` : ''}
       </div>
@@ -704,6 +855,57 @@ function handleEditMovement(id) {
     }
 }
 
+async function handleVerifyMovement(id) {
+    const movement = AppState.movements.find(m => m.id === id);
+    if (!movement) return;
+
+    const confirmed = await showConfirm(
+        'Verificar Movimiento',
+        '¿Estás seguro de que deseas verificar este movimiento? Esto actualizará el saldo y enviará una notificación.',
+        'fa-check-circle'
+    );
+
+    if (!confirmed) return;
+
+    showLoading(true, 'Verificando movimiento...');
+
+    try {
+        // 1. Obtener la versión más reciente del movimiento para asegurar tener idmessage y remote_jid
+        const latestMovement = await getMovementById(id);
+        if (!latestMovement) {
+            showToast('No se pudo encontrar el movimiento actualizado', 'error');
+            return;
+        }
+
+        // 2. Actualizar en Supabase a VERIFICADO
+        const success = await updateMovement(id, { verified: 'VERIFICADO' });
+
+        if (success) {
+            // 3. Notificar al webhook de verificación (solo si es admin y se verifica manualmente)
+            // Usamos latestMovement para asegurar que tenemos idmessage y remote_jid
+            if (latestMovement.idmessage && latestMovement.remote_jid) {
+                await notifyVerificationWebhook(latestMovement);
+            } else {
+                console.warn('No se pudo enviar notificación de WhatsApp: faltan datos del webhook original');
+                showToast('Verificado sin notificación (datos de WhatsApp no disponibles)', 'warning');
+            }
+
+            showToast('Movimiento verificado exitosamente', 'success');
+            
+            // 4. Recargar datos para actualizar la UI
+            closeDetailModal();
+            await loadDashboard();
+        } else {
+            showToast('Error al actualizar el estado del movimiento', 'error');
+        }
+    } catch (error) {
+        console.error('Error en handleVerifyMovement:', error);
+        showToast('Ocurrió un error al verificar', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
 function handleDownloadReceipt() {
     if (AppState.selectedMovement) {
         generateMovementReceipt(AppState.selectedMovement);
@@ -714,18 +916,81 @@ function handleDownloadReceipt() {
 // GENERACIÓN DE PDF
 // ============================================
 
+function openPdfModal() {
+    const modal = document.getElementById('pdf-modal-overlay');
+    if (modal) {
+        // Reset fechas por defecto (mes actual)
+        const now = new Date();
+        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+        
+        document.getElementById('pdf-date-start').value = firstDay;
+        document.getElementById('pdf-date-end').value = lastDay;
+        
+        modal.classList.add('active');
+    }
+}
+
+function closePdfModal() {
+    const modal = document.getElementById('pdf-modal-overlay');
+    if (modal) modal.classList.remove('active');
+}
+
 async function handleGeneratePDF() {
-    if (AppState.movements.length === 0) {
-        showToast('No hay movimientos para exportar', 'error');
+    const typeFilter = document.querySelector('input[name="pdf-type"]:checked').value;
+    const dateStart = document.getElementById('pdf-date-start').value;
+    const dateEnd = document.getElementById('pdf-date-end').value;
+    const mode = document.querySelector('input[name="pdf-mode"]:checked').value;
+
+    if (!dateStart || !dateEnd) {
+        showToast('Selecciona un rango de fechas', 'error');
         return;
     }
 
-    showLoading(true, 'Generando PDF...');
+    showLoading(true, 'Filtrando movimientos...');
 
     try {
-        await generateMovementsReport(AppState.movements, AppState.stats, {
-            periodo: 'Todos los movimientos'
+        // Obtener el cliente de Supabase
+        const client = getSupabase();
+        if (!client) throw new Error('No se pudo conectar con Supabase');
+
+        // Obtener movimientos filtrados desde Supabase
+        const { data: movements, error } = await client
+            .from('daviplata_movimientos')
+            .select('*')
+            .gte('fecha', dateStart + 'T00:00:00')
+            .lte('fecha', dateEnd + 'T23:59:59')
+            .order('fecha', { ascending: false });
+
+        if (error) throw error;
+
+        // Filtrar por tipo si no es TODOS
+        let filteredMovements = movements;
+        if (typeFilter !== 'TODOS') {
+            filteredMovements = movements.filter(m => m.tipo === typeFilter);
+        }
+
+        if (filteredMovements.length === 0) {
+            showToast('No hay movimientos en este rango', 'warning');
+            return;
+        }
+
+        // Calcular estadísticas para el reporte basado en los filtrados
+        const stats = {
+            total_ingresos: filteredMovements.filter(m => m.tipo === 'INGRESO').reduce((acc, m) => acc + m.monto, 0),
+            total_egresos: filteredMovements.filter(m => m.tipo === 'EGRESO').reduce((acc, m) => acc + m.monto, 0),
+            balance: filteredMovements.reduce((acc, m) => acc + (m.tipo === 'INGRESO' ? m.monto : -m.monto), 0)
+        };
+
+        showLoading(true, 'Generando PDF...');
+
+        await generateMovementsReport(filteredMovements, stats, {
+            periodo: `${formatDateShort(dateStart)} al ${formatDateShort(dateEnd)}`,
+            tipo: typeFilter,
+            mode: mode // 'device' o 'print'
         });
+
+        closePdfModal();
     } catch (error) {
         console.error('Error generando PDF:', error);
         showToast('Error al generar PDF', 'error');
