@@ -198,9 +198,13 @@ async function getCurrentUserProfile() {
     if (!client) return null;
 
     try {
+        const user = await getCurrentUser();
+        if (!user) return null;
+
         const { data, error } = await client
             .from('daviplata_usuarios')
             .select('*')
+            .eq('email', user.email)
             .single();
 
         if (error) {
