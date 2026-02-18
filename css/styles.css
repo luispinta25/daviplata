@@ -290,6 +290,17 @@ a {
 
 .header-brand {
     flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.app-version {
+    font-size: 8px;
+    color: rgba(255, 255, 255, 0.4);
+    font-weight: 500;
+    margin-top: 2px;
+    letter-spacing: 0.5px;
 }
 
 .logo {

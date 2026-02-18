@@ -68,8 +68,8 @@ async function handleAuthSuccess(session) {
     const profile = await getCurrentUserProfile();
     if (profile) {
         AppState.userProfile = profile;
-        AppState.isAdmin = profile.rol === 'admin';
-        console.log(`Usuario: ${profile.email} | Rol: ${profile.rol}`);
+        AppState.isAdmin = profile.rol_daviplata === 'admin';
+        console.log(`Usuario: ${profile.email} | Rol: ${profile.rol_daviplata}`);
     }
 
     // Mostrar app y cargar datos
@@ -668,7 +668,7 @@ async function handleFormSubmit(event) {
         // Subir comprobante si existe
         if (AppState.selectedFile) {
             showLoading(true, 'Subiendo comprobante...');
-            comprobanteUrl = await uploadToWebhook(AppState.selectedFile, AppState.selectedFile.name);
+            comprobanteUrl = await uploadToSupabaseStorage(AppState.selectedFile, AppState.selectedFile.name);
         }
 
         // Definir estado de verificación
@@ -695,9 +695,9 @@ async function handleFormSubmit(event) {
             const updatedData = await updateMovement(AppState.editingMovementId, updates);
 
             if (updatedData) {
-                // 4. Webhook de Notificación con los datos nuevos
+                // 4. Webhook de Notificación con los datos nuevos (Indicamos que es una CORRECCIÓN)
                 // (Este webhook registra internamente el nuevo idmessage retornado por n8n)
-                await notifyMovementWebhook(updatedData);
+                await notifyMovementWebhook(updatedData, true);
 
                 showToast('Movimiento actualizado y re-notificado', 'success');
                 closeModal();
@@ -715,6 +715,9 @@ async function handleFormSubmit(event) {
             }, AppState.userProfile.id);
 
             if (movement) {
+                // Notificar nuevo movimiento al webhook
+                await notifyMovementWebhook(movement);
+
                 showToast(verified === 'PENDIENTE' ? 'Registrado (Pendiente de verificación)' : 'Movimiento registrado', 'success');
                 closeModal();
                 await loadDashboard();
@@ -1093,3 +1096,4 @@ function formatDate(date, options = {}) {
     };
     return d.toLocaleDateString(CONFIG.DATE_LOCALE || 'en-US', defaultOptions);
 }
+

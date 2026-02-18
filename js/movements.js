@@ -153,9 +153,6 @@ async function createMovement(movement, usuarioId) {
 
         console.log('✅ Movimiento creado:', data);
 
-        // Notificar al webhook
-        await notifyMovementWebhook(data);
-
         return data;
     } catch (error) {
         console.error('❌ Error:', error);

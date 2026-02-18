@@ -11,9 +11,9 @@ const CONFIG = {
     STORAGE_BUCKET: 'luispintapersonal',
 
     // Webhooks (solo para notificaciones)
-    WEBHOOK_MOVEMENT: 'https://lpwebhook.luispinta.com/webhook/daviplataevo',
-    WEBHOOK_VERIFY: 'https://lpwebhook.luispinta.com/webhook/daviplataverificacion',
-    WEBHOOK_DELETE: 'https://lpwebhook.luispinta.com/webhook/daviplataeliminacion',
+    WEBHOOK_MOVEMENT: 'https://lpn8nwebhook.luispintasolutions.com/webhook/daviplataevo',
+    WEBHOOK_VERIFY: 'https://lpn8nwebhook.luispintasolutions.com/webhook/daviplataverificacion',
+    WEBHOOK_DELETE: 'https://lpn8nwebhook.luispintasolutions.com/webhook/daviplataeliminacion',
 
     // Image Compression Settings
     IMAGE_MAX_WIDTH: 1200,
