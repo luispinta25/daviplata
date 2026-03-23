@@ -17,7 +17,8 @@ const AppState = {
     user: null,
     userProfile: null,
     isAdmin: false,
-    editingMovementId: null
+    editingMovementId: null,
+    chart: null // Referencia para el gráfico
 };
 
 // ============================================
@@ -45,7 +46,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     onAuthStateChange(async (event, session) => {
         console.log('Auth event:', event);
         if (event === 'SIGNED_IN' && session) {
-            await handleAuthSuccess(session);
+            // Solo llamar si no hay sesión actual en AppState para evitar duplicados
+            if (!AppState.session) {
+                await handleAuthSuccess(session);
+            }
         } else if (event === 'SIGNED_OUT') {
             showLoginScreen();
         }
@@ -53,9 +57,47 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Event listeners
     setupEventListeners();
+    setupDesktopEventListeners();
 
     console.log('DaviPlata listo');
 });
+
+/**
+ * Event listeners específicos para desktop dashboard
+ */
+function setupDesktopEventListeners() {
+    const dashBtnIncome = document.getElementById('dash-btn-income');
+    const dashBtnExpense = document.getElementById('dash-btn-expense');
+    const dashBtnReport = document.getElementById('dash-btn-report');
+    const dashBtnExport = document.getElementById('dash-btn-export');
+
+    if (dashBtnIncome) {
+        dashBtnIncome.addEventListener('click', () => openNewMovementModal('INGRESO'));
+    }
+
+    if (dashBtnExpense) {
+        dashBtnExpense.addEventListener('click', () => {
+            if (!AppState.isAdmin) {
+                showToast('Solo administradores pueden registrar egresos', 'error');
+                return;
+            }
+            openNewMovementModal('EGRESO');
+        });
+    }
+
+    if (dashBtnReport) {
+        dashBtnReport.addEventListener('click', () => {
+            showToast('Funcionalidad de reportes próximamente', 'info');
+        });
+    }
+
+    if (dashBtnExport) {
+        dashBtnExport.addEventListener('click', () => {
+            const btnPdf = document.getElementById('btn-pdf');
+            if (btnPdf) btnPdf.click();
+        });
+    }
+}
 
 /**
  * Maneja el éxito de autenticación
@@ -97,15 +139,21 @@ async function handleAuthSuccess(session) {
  */
 function updateUIForRole() {
     const fabExpense = document.getElementById('fab-expense');
+    const dashBtnExpense = document.getElementById('dash-btn-expense');
     const expenseTypeOption = document.querySelector('.type-option.expense');
 
     if (AppState.isAdmin) {
         // Admin puede ver ambos botones
         if (fabExpense) fabExpense.style.display = 'flex';
+        if (dashBtnExpense) dashBtnExpense.style.opacity = '1';
         if (expenseTypeOption) expenseTypeOption.style.display = 'block';
     } else {
         // User solo puede ver ingresos
         if (fabExpense) fabExpense.style.display = 'none';
+        if (dashBtnExpense) {
+            dashBtnExpense.style.opacity = '0.5';
+            dashBtnExpense.title = 'Solo administradores';
+        }
         if (expenseTypeOption) expenseTypeOption.style.display = 'none';
     }
 
@@ -163,6 +211,7 @@ async function loadDashboard() {
 
         renderBalance(stats);
         renderMovements(movements);
+        renderCharts(movements);
     } catch (error) {
         console.error('Error cargando dashboard:', error);
         showToast('Error al cargar datos', 'error');
@@ -253,6 +302,47 @@ function renderBalance(stats) {
             pendingContainer.style.display = 'none';
         }
     }
+}
+function renderCharts(movements) {
+    const ctx = document.getElementById('expenses-chart');
+    if (!ctx) return;
+
+    // Si ya existe un chart, destruirlo para recrearlo
+    if (AppState.chart) {
+        AppState.chart.destroy();
+    }
+
+    // Datos simplificados: Ingresos vs Egresos
+    const income = movements.filter(m => m.tipo === 'INGRESO').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0);
+    const expense = movements.filter(m => m.tipo === 'EGRESO').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0);
+
+    AppState.chart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Ingresos', 'Egresos'],
+            datasets: [{
+                data: [income, expense],
+                backgroundColor: ['#10B981', '#EF4444'],
+                borderWidth: 0,
+                hoverOffset: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        usePointStyle: true,
+                        padding: 20,
+                        font: { size: 12 }
+                    }
+                }
+            },
+            cutout: '70%'
+        }
+    });
 }
 
 function renderMovements(movements) {
@@ -459,6 +549,15 @@ async function handleLogin(e) {
         showToast(error, 'error');
     } else {
         showToast('Bienvenido', 'success');
+        
+        if (data && data.session) {
+            try {
+                await handleAuthSuccess(data.session);
+            } catch (err) {
+                console.error('Error post-login:', err);
+                showToast('Error cargando la sesión', 'error');
+            }
+        }
     }
 }
 
