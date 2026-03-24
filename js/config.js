@@ -12,6 +12,7 @@ const CONFIG = {
 
     // Webhooks (solo para notificaciones)
     WEBHOOK_MOVEMENT: 'https://lpn8nwebhook.luispintasolutions.com/webhook/daviplataevo',
+    WEBHOOK_MOVEMENT_PDF: 'https://lpn8nwebhook.luispintasolutions.com/webhook/daviplataevopdf',
     WEBHOOK_VERIFY: 'https://lpn8nwebhook.luispintasolutions.com/webhook/daviplataverificacion',
     WEBHOOK_DELETE: 'https://lpn8nwebhook.luispintasolutions.com/webhook/daviplataeliminacion',
 

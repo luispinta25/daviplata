@@ -677,9 +677,12 @@ async function handleFileSelect(event) {
     const file = event.target.files[0];
     if (!file) return;
 
-    // Solo permitir imágenes
-    if (!file.type.startsWith('image/')) {
-        showToast('Solo se permiten imágenes (JPG, PNG)', 'warning');
+    const isImage = file.type.startsWith('image/');
+    const isPdf   = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+    // Solo permitir imágenes y PDF
+    if (!isImage && !isPdf) {
+        showToast('Solo se permiten imágenes (JPG, PNG) o PDF', 'warning');
         event.target.value = '';
         return;
     }
@@ -691,18 +694,26 @@ async function handleFileSelect(event) {
 
     // Marcar el botón actual
     const optionItem = event.target.closest('.upload-option-item');
-    if (optionItem) {
-        optionItem.classList.add('has-file');
-    }
+    if (optionItem) optionItem.classList.add('has-file');
 
     // Mostrar preview
     const previewContainer = document.getElementById('file-preview-container');
     if (!previewContainer) return;
 
-    if (file.type.startsWith('image/')) {
+    if (isImage) {
         const dataUrl = await readFileAsDataURL(file);
-        if (previewContainer) {
-            previewContainer.innerHTML = `<img src="${dataUrl}" class="upload-preview-img" alt="Preview" onclick="window.open('${dataUrl}', '_blank')">`;
+        previewContainer.innerHTML = `<img src="${dataUrl}" class="upload-preview-img" alt="Preview" onclick="window.open('${dataUrl}', '_blank')">`;
+    } else if (isPdf) {
+        // On desktop show inline embed, on mobile just show the filename badge
+        const isDesktop = window.innerWidth >= 992;
+        const objectUrl = URL.createObjectURL(file);
+        if (isDesktop) {
+            previewContainer.innerHTML =
+                `<iframe src="${objectUrl}" style="width:100%;height:320px;border-radius:8px;border:1px solid var(--border)" title="PDF Preview"></iframe>
+                 <div class="file-name-badge"><i class="fas fa-file-pdf"></i> ${escapeHtml(file.name)} (${formatBytes(file.size)})</div>`;
+        } else {
+            previewContainer.innerHTML =
+                `<div class="file-name-badge"><i class="fas fa-file-pdf"></i> ${escapeHtml(file.name)} (${formatBytes(file.size)})</div>`;
         }
     }
 }
@@ -728,6 +739,27 @@ function clearFilePreview() {
 
 async function handleFormSubmit(event) {
     event.preventDefault();
+
+    // ── Guard: prevenir doble envío ──
+    if (AppState.submitting) return;
+    AppState.submitting = true;
+
+    // Bloquear botón y mostrar spinner
+    const submitBtn = event.target.querySelector('[type="submit"]');
+    let originalBtnContent = null;
+    if (submitBtn) {
+        originalBtnContent = submitBtn.innerHTML;
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando…';
+    }
+
+    const releaseLock = () => {
+        AppState.submitting = false;
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalBtnContent;
+        }
+    };
 
     // Obtener valores
     const activeType = document.querySelector('.type-option.active');
@@ -773,6 +805,7 @@ async function handleFormSubmit(event) {
         // Definir estado de verificación
         // Si lo edita/crea un ADMIN se autoverifica. Si es un USUARIO normal, siempre pasa a PENDIENTE.
         const verified = AppState.isAdmin ? 'VERIFICADO' : 'PENDIENTE';
+        const isPdf = AppState.selectedFile?.type === 'application/pdf' || false;
 
         if (isEditing) {
             // ============================================
@@ -796,7 +829,7 @@ async function handleFormSubmit(event) {
             if (updatedData) {
                 // 4. Webhook de Notificación con los datos nuevos (Indicamos que es una CORRECCIÓN)
                 // (Este webhook registra internamente el nuevo idmessage retornado por n8n)
-                await notifyMovementWebhook(updatedData, true);
+                await notifyMovementWebhook(updatedData, true, isPdf);
 
                 showToast('Movimiento actualizado y re-notificado', 'success');
                 closeModal();
@@ -815,7 +848,7 @@ async function handleFormSubmit(event) {
 
             if (movement) {
                 // Notificar nuevo movimiento al webhook
-                await notifyMovementWebhook(movement);
+                await notifyMovementWebhook(movement, false, isPdf);
 
                 showToast(verified === 'PENDIENTE' ? 'Registrado (Pendiente de verificación)' : 'Movimiento registrado', 'success');
                 closeModal();
@@ -827,6 +860,7 @@ async function handleFormSubmit(event) {
         showToast('Error al guardar el movimiento', 'error');
     } finally {
         showLoading(false);
+        releaseLock();
     }
 }
 

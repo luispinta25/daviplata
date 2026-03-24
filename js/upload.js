@@ -10,16 +10,9 @@
  * @returns {Promise<Blob>} - Imagen comprimida o original si no vale la pena comprimir
  */
 async function compressImage(file) {
-    return new Promise((resolve, reject) => {
-        // Si no es imagen, devolver el archivo original
+    return new Promise((resolve) => {
+        // Solo comprimir imágenes
         if (!file.type.startsWith('image/')) {
-            resolve(file);
-            return;
-        }
-
-        // Si la imagen es muy pequeña (< 100KB), no vale la pena comprimir
-        if (file.size < 100 * 1024) {
-            console.log(`Imagen pequeña (${formatBytes(file.size)}), no se comprime`);
             resolve(file);
             return;
         }
@@ -30,29 +23,18 @@ async function compressImage(file) {
             const img = new Image();
 
             img.onload = () => {
-                // Calcular nuevas dimensiones manteniendo aspect ratio
-                let width = img.width;
-                let height = img.height;
+                // Dimensiones máximas agresivas — suficiente para un comprobante legible
+                const MAX = 900;
+                let { width, height } = img;
 
-                const maxWidth = CONFIG.IMAGE_MAX_WIDTH || 1200;
-                const maxHeight = CONFIG.IMAGE_MAX_HEIGHT || 1200;
-
-                // Solo redimensionar si es necesario
-                const needsResize = width > maxWidth || height > maxHeight;
-
-                if (width > maxWidth) {
-                    height = Math.round((height * maxWidth) / width);
-                    width = maxWidth;
+                if (width > height) {
+                    if (width > MAX) { height = Math.round(height * MAX / width); width = MAX; }
+                } else {
+                    if (height > MAX) { width = Math.round(width * MAX / height); height = MAX; }
                 }
 
-                if (height > maxHeight) {
-                    width = Math.round((width * maxHeight) / height);
-                    height = maxHeight;
-                }
-
-                // Crear canvas y comprimir
                 const canvas = document.createElement('canvas');
-                canvas.width = width;
+                canvas.width  = width;
                 canvas.height = height;
 
                 const ctx = canvas.getContext('2d');
@@ -60,38 +42,37 @@ async function compressImage(file) {
                 ctx.imageSmoothingQuality = 'high';
                 ctx.drawImage(img, 0, 0, width, height);
 
-                // Siempre usar JPEG para mejor compresión (excepto PNG con transparencia)
-                const quality = CONFIG.IMAGE_QUALITY || 0.85;
+                // Intentar WebP primero (mejor ratio); caer en JPEG
+                const tryWebP = typeof ImageData !== 'undefined';
+                const quality = 0.72;
 
-                canvas.toBlob((blob) => {
-                    if (blob) {
-                        // Solo usar el blob comprimido si es MENOR que el original
-                        if (blob.size < file.size) {
-                            const savings = ((1 - blob.size / file.size) * 100).toFixed(1);
-                            console.log(`Imagen comprimida: ${formatBytes(file.size)} → ${formatBytes(blob.size)} (-${savings}%)`);
-                            resolve(blob);
+                const finish = (blob, mime) => {
+                    if (!blob) { resolve(file); return; }
+                    const savings = ((1 - blob.size / file.size) * 100).toFixed(1);
+                    console.log(`Comprimido [${mime}]: ${formatBytes(file.size)} → ${formatBytes(blob.size)} (-${savings}%)`);
+                    // Usar comprimido siempre que no sea mayor que el original
+                    resolve(blob.size < file.size ? blob : file);
+                };
+
+                if (tryWebP) {
+                    canvas.toBlob((webpBlob) => {
+                        if (webpBlob && webpBlob.size < file.size) {
+                            finish(webpBlob, 'image/webp');
                         } else {
-                            console.log(`Compresión no beneficiosa, usando original (${formatBytes(file.size)})`);
-                            resolve(file);
+                            // WebP no mejor — usar JPEG
+                            canvas.toBlob((jpegBlob) => finish(jpegBlob, 'image/jpeg'), 'image/jpeg', quality);
                         }
-                    } else {
-                        // Si falla la compresión, usar original
-                        resolve(file);
-                    }
-                }, 'image/jpeg', quality);
+                    }, 'image/webp', quality);
+                } else {
+                    canvas.toBlob((jpegBlob) => finish(jpegBlob, 'image/jpeg'), 'image/jpeg', quality);
+                }
             };
 
-            img.onerror = () => {
-                console.warn('Error cargando imagen, usando original');
-                resolve(file);
-            };
+            img.onerror = () => resolve(file);
             img.src = e.target.result;
         };
 
-        reader.onerror = () => {
-            console.warn('Error leyendo archivo, usando original');
-            resolve(file);
-        };
+        reader.onerror = () => resolve(file);
         reader.readAsDataURL(file);
     });
 }
@@ -130,7 +111,8 @@ async function uploadToSupabaseStorage(file, filename) {
     }
 
     try {
-        // Comprimir si es imagen
+        // Comprimir solo imágenes; los PDFs se suben sin modificar
+        // (el endpoint daviplataevopdf los envía como documento en WhatsApp)
         let fileToUpload = file;
         if (file.type && file.type.startsWith('image/')) {
             fileToUpload = await compressImage(file);
@@ -178,7 +160,7 @@ async function uploadToSupabaseStorage(file, filename) {
  * @param {Object} movement - Datos del movimiento
  * @param {boolean} isCorrection - Si el movimiento es una edición/corrección
  */
-async function notifyMovementWebhook(movement, isCorrection = false) {
+async function notifyMovementWebhook(movement, isCorrection = false, isPdf = false) {
     try {
         // Obtener estadísticas actualizadas para enviar el saldo real después del movimiento
         // getStatistics() está definido en movements.js y es accesible globalmente
@@ -288,7 +270,7 @@ ${correctionNote}
             formData.append('remote_jid', movement.remote_jid);
         }
 
-        const response = await fetch(CONFIG.WEBHOOK_MOVEMENT, {
+        const response = await fetch(isPdf ? CONFIG.WEBHOOK_MOVEMENT_PDF : CONFIG.WEBHOOK_MOVEMENT, {
             method: 'POST',
             body: formData
         });

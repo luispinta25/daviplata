@@ -502,7 +502,7 @@
       position: fixed; inset: 0;
       background: rgba(13,17,23,.85); backdrop-filter: blur(6px);
       display: none; align-items: center; justify-content: center;
-      flex-direction: column; gap: 14px; z-index: 9998;
+      flex-direction: column; gap: 14px; z-index: 99998;
     }
     #loading-overlay.active { display: flex; }
     .loading-spinner {
@@ -1341,8 +1341,8 @@
                 <input type="file" id="file-camera" accept="image/*" capture="environment">
               </div>
               <div class="upload-option-item" id="opt-gallery">
-                <i class="fas fa-images"></i><span>Subir archivo</span>
-                <input type="file" id="file-gallery" accept="image/*">
+                <i class="fas fa-images"></i><span>Imagen o PDF</span>
+                <input type="file" id="file-gallery" accept="image/*,application/pdf">
               </div>
             </div>
             <div id="file-preview-container"></div>
@@ -2076,6 +2076,7 @@
               '<div class="comprobante-pdf-box">' +
                 '<i class="fas fa-file-pdf"></i>' +
                 '<span>Documento PDF adjunto</span>' +
+                '<iframe src="' + safeUrl + '#toolbar=0&navpanes=0&scrollbar=1" style="width:100%;height:340px;border:none;border-radius:8px;background:#fff" title="PDF"></iframe>' +
                 '<button class="btn btn-primary comprobante-open-btn" onclick="window.open(\'' + safeUrl + '\',\'_blank\')">' +
                   '<i class="fas fa-external-link-alt"></i> Abrir en nueva pestaña' +
                 '</button>' +
